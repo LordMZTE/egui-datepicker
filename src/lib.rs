@@ -28,17 +28,15 @@
 //!
 //! [ex]: ./examples/simple.rs
 
-use std::{fmt::Display, hash::Hash};
+use std::hash::Hash;
 
 pub use chrono::{
     offset::{FixedOffset, Local, Utc},
     Date,
 };
 use chrono::{prelude::*, Duration};
-use eframe::{
-    egui,
-    egui::{Area, Color32, DragValue, Frame, Id, Key, Order, Response, Ui, Widget},
-};
+use egui::{self, RichText, WidgetText};
+use egui::{Area, Color32, DragValue, Frame, Id, Key, Order, Response, Ui, Widget};
 use num_traits::FromPrimitive;
 
 /// Default values of fields are:
@@ -46,13 +44,9 @@ use num_traits::FromPrimitive;
 /// - movable: `false`
 /// - format_string: `"%Y-%m-%d"`
 /// - weekend_days: `[Weekday::Sat, Weekday::sun]`
-pub struct DatePicker<'a, Tz>
-where
-    Tz: TimeZone,
-    Tz::Offset: Display,
-{
+pub struct DatePicker<'a> {
     id: Id,
-    date: &'a mut Date<Tz>,
+    date: &'a mut NaiveDate,
     sunday_first: bool,
     movable: bool,
     format_string: String,
@@ -61,13 +55,9 @@ where
     highlight_weekend: bool,
 }
 
-impl<'a, Tz> DatePicker<'a, Tz>
-where
-    Tz: TimeZone,
-    Tz::Offset: Display,
-{
+impl<'a> DatePicker<'a> {
     /// Create new date picker with unique id and mutable reference to date.
-    pub fn new<T: Hash>(id: T, date: &'a mut Date<Tz>) -> Self {
+    pub fn new<T: Hash>(id: T, date: &'a mut NaiveDate) -> Self {
         Self {
             id: Id::new(id),
             date,
@@ -99,7 +89,7 @@ where
     ///Set date format.
     ///See the [chrono::format::strftime](https://docs.rs/chrono/0.4.19/chrono/format/strftime/index.html) for the specification.
     #[must_use]
-    pub fn date_format(mut self, new_format: &impl ToString) -> Self {
+    pub fn date_format(mut self, new_format: impl ToString) -> Self {
         self.format_string = new_format.to_string();
         self
     }
@@ -134,7 +124,7 @@ where
 
     /// Get number of days between first day of the month and Monday ( or Sunday if field
     /// `sunday_first` is set to `true` )
-    fn get_start_offset_of_calendar(&self, first_day: &Date<Tz>) -> u32 {
+    fn get_start_offset_of_calendar(&self, first_day: &NaiveDate) -> u32 {
         if self.sunday_first {
             first_day.weekday().num_days_from_sunday()
         } else {
@@ -144,7 +134,7 @@ where
 
     /// Get number of days between first day of the next month and Monday ( or Sunday if field
     /// `sunday_first` is set to `true` )
-    fn get_end_offset_of_calendar(&self, first_day: &Date<Tz>) -> u32 {
+    fn get_end_offset_of_calendar(&self, first_day: &NaiveDate) -> u32 {
         if self.sunday_first {
             (7 - (first_day).weekday().num_days_from_sunday()) % 7
         } else {
@@ -159,20 +149,20 @@ where
             let start_offset = self.get_start_offset_of_calendar(&first_day_of_current_month);
             let days_in_month = get_days_from_month(self.date.year(), self.date.month());
             let first_day_of_next_month =
-                first_day_of_current_month.clone() + Duration::days(days_in_month);
+                first_day_of_current_month + Duration::days(days_in_month);
             let end_offset = self.get_end_offset_of_calendar(&first_day_of_next_month);
             let start_date = first_day_of_current_month - Duration::days(start_offset.into());
             for i in 0..(start_offset as i64 + days_in_month + end_offset as i64) {
                 if i % 7 == 0 {
                     ui.end_row();
                 }
-                let d = start_date.clone() + Duration::days(i);
+                let d = start_date + Duration::days(i);
                 self.show_day_button(d, ui);
             }
         });
     }
 
-    fn show_day_button(&mut self, date: Date<Tz>, ui: &mut Ui) {
+    fn show_day_button(&mut self, date: NaiveDate, ui: &mut Ui) {
         ui.add_enabled_ui(self.date != &date, |ui| {
             ui.centered_and_justified(|ui| {
                 if self.date.month() != date.month() {
@@ -194,15 +184,15 @@ where
             self.show_month_control(ui);
             self.show_year_control(ui);
             if ui.button("Today").clicked() {
-                *self.date = Utc::now().with_timezone(&self.date.timezone()).date();
+                *self.date = Local::now().naive_local().date();
             }
         });
     }
 
     /// Draw button with text and add duration to current date when that button is clicked.
-    fn date_step_button(&mut self, ui: &mut Ui, text: impl ToString, duration: Duration) {
+    fn date_step_button(&mut self, ui: &mut Ui, text: impl Into<WidgetText>, duration: Duration) {
         if ui.button(text).clicked() {
-            *self.date = self.date.clone() + duration;
+            *self.date += duration;
         }
     }
 
@@ -224,10 +214,9 @@ where
         self.date_step_button(ui, "<", Duration::days(-30));
         let month_string = chrono::Month::from_u32(self.date.month()).unwrap().name();
         // TODO: When https://github.com/emilk/egui/pull/543 is merged try to change label to combo box.
-        ui.add(
-            egui::Label::new(format!("{: <9}", month_string))
-                .text_style(egui::TextStyle::Monospace),
-        );
+        ui.add(egui::Label::new(
+            RichText::new(format!("{: <9}", month_string)).text_style(egui::TextStyle::Monospace),
+        ));
         // let mut selected = self.date.month0() as usize;
         // egui::ComboBox::from_id_source(self.id.with("month_combo_box"))
         //     .selected_text(selected)
@@ -241,13 +230,9 @@ where
     }
 }
 
-impl<'a, Tz> Widget for DatePicker<'a, Tz>
-where
-    Tz: TimeZone,
-    Tz::Offset: Display,
-{
+impl<'a> Widget for DatePicker<'a> {
     fn ui(mut self, ui: &mut Ui) -> Response {
-        let formated_date = self.date.format(&self.format_string);
+        let formated_date = self.date.format(&self.format_string).to_string();
         let button_response = ui.button(formated_date);
         if button_response.clicked() {
             ui.memory().toggle_popup(self.id);

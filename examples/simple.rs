@@ -1,3 +1,4 @@
+use chrono::NaiveDate;
 use eframe::{
     egui::{self, Color32},
     epi,
@@ -5,13 +6,13 @@ use eframe::{
 use egui_datepicker::*;
 
 struct ExampleApp {
-    date: Date<Utc>,
+    date: NaiveDate,
 }
 
 impl Default for ExampleApp {
     fn default() -> Self {
         Self {
-            date: Utc::now().date(),
+            date: Local::now().naive_local().date(),
         }
     }
 }
@@ -21,7 +22,7 @@ impl epi::App for ExampleApp {
         "Datepicker example"
     }
 
-    fn update(&mut self, ctx: &egui::CtxRef, _frame: &mut epi::Frame<'_>) {
+    fn update(&mut self, ctx: &egui::CtxRef, _frame: &epi::Frame) {
         // ctx.set_debug_on_hover(true);
         egui::CentralPanel::default().show(ctx, |ui| {
             egui::Grid::new("exaamples_grid").show(ui, |ui| {
@@ -35,7 +36,7 @@ impl epi::App for ExampleApp {
                 ui.add(DatePicker::new("movable", &mut self.date).movable(true));
                 ui.end_row();
                 ui.label("Different format");
-                ui.add(DatePicker::new("differentformat", &mut self.date).date_format(&"%d/%m/%Y"));
+                ui.add(DatePicker::new("differentformat", &mut self.date).date_format("%d/%m/%Y"));
                 ui.end_row();
                 ui.label("Disable weekend highlight");
                 ui.add(
